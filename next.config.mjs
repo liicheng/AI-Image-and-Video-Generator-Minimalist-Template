@@ -22,18 +22,6 @@ const nextConfig = {
           },
         ],
       },
-      video: {
-        remotePatterns: [
-          {
-            protocol: 'https',
-            hostname: 'replicate.delivery',
-          },
-          {
-            protocol: 'https',
-            hostname: 'replicate.com',
-          },
-        ],
-      },
 };
  
 export default withNextIntl(nextConfig);
