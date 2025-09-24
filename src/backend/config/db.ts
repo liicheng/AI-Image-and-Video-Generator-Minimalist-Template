@@ -10,8 +10,8 @@ export function getDb() {
     const password = process.env.POSTGRES_PASSWORD || 'zhang960222..';
     
     globalPool = new Pool({
-      host: process.env.POSTGRES_HOST || 'db.ywfpuicjcqmkexovlwnk.supabase.co',
-      port: parseInt(process.env.POSTGRES_PORT || '5432'),
+      host: process.env.POSTGRES_HOST || 'thowwlnwywlujiajhxpv.pooler.supabase.com',
+      port: parseInt(process.env.POSTGRES_PORT || '6543'),
       user: process.env.POSTGRES_USER || 'postgres',
       password: password,
       database: process.env.POSTGRES_DATABASE || 'postgres',
