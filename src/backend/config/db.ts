@@ -9,6 +9,9 @@ export function getDb() {
 
     globalPool = new Pool({
       connectionString,
+      ssl: {
+        rejectUnauthorized: false, // 允许自签名证书
+      },
     });
   }
 
