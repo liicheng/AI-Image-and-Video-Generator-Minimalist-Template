@@ -226,12 +226,127 @@ POSTGRES_URL=postgresql://postgres.thowwlnwywlujiajhxpv:zhang960222..@aws-1-us-e
 ### 主要修改文件
 - `src/backend/config/db.ts` - 数据库连接配置
 
+### 详细变更过程
+
+#### 阶段 6: CA证书验证方案（2025-09-27）
+**目标**: 使用Supabase官方CA证书进行严格SSL验证
+
+**实施内容**:
+```typescript
+// 获取SSL配置 - 使用CA证书进行严格验证
+const getSSLConfig = () => {
+  const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
+  const caCert = process.env.SUPABASE_SSL_CERT;
+  
+  if (isVercel && caCert) {
+    console.log('Using CA certificate for strict SSL validation in Vercel environment');
+    return {
+      ssl: {
+        ca: caCert,                    // 使用Supabase提供的CA证书
+        rejectUnauthorized: true,      // 严格证书验证
+      }
+    };
+  }
+  
+  // 本地环境或备用配置
+  console.log('Using relaxed SSL validation for local environment');
+  return { ssl: { rejectUnauthorized: false } };
+};
+```
+
+**环境变量配置**:
+```
+SUPABASE_SSL_CERT=-----BEGIN CERTIFICATE-----
+MIIDxDCCAqygAwIBAgIUbLxMod62P2ktCiAkxnKJwtE9VPYwDQYJKoZIhvcNAQEL
+[完整证书内容...]
+-----END CERTIFICATE-----
+```
+
+**结果**: 部署后SSL错误依然存在，证书验证未生效
+
+#### 阶段 7: 临时SSL禁用方案（已撤销）
+**目标**: 快速解决生产环境问题，临时禁用SSL
+
+**实施内容**:
+```typescript
+// 获取SSL配置 - Vercel环境临时禁用SSL以解决证书链问题
+const getSSLConfig = () => {
+  const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
+  
+  if (isVercel) {
+    console.log('Disabling SSL for Vercel environment (temporary solution for certificate chain issue)');
+    return { ssl: false };
+  }
+  
+  // 本地环境保持SSL验证
+  console.log('Using SSL validation for local environment');
+  return { ssl: { rejectUnauthorized: false } };
+};
+```
+
+**状态**: 已撤销，回滚到CA证书方案
+
+#### 阶段 8: SSL配置诊断版本（当前）
+**目标**: 提供详细的调试信息和多种SSL配置选项
+
+**实施内容**:
+```typescript
+// 获取SSL配置 - 诊断版本
+const getSSLConfig = () => {
+  const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
+  const caCert = process.env.SUPABASE_SSL_CERT;
+  
+  console.log('=== SSL CONFIG DEBUG ===');
+  console.log('Is Vercel:', isVercel);
+  console.log('CA Cert exists:', !!caCert);
+  console.log('CA Cert length:', caCert ? caCert.length : 0);
+  console.log('CA Cert preview:', caCert ? caCert.substring(0, 100) + '...' : 'N/A');
+  
+  if (isVercel && caCert) {
+    // 多种SSL配置选项
+    const sslConfigs = [
+      {
+        name: 'Strict validation with CA cert',
+        config: { ssl: { ca: caCert, rejectUnauthorized: true } }
+      },
+      {
+        name: 'Relaxed validation with CA cert',
+        config: { ssl: { ca: caCert, rejectUnauthorized: false } }
+      },
+      {
+        name: 'No SSL validation',
+        config: { ssl: { rejectUnauthorized: false } }
+      },
+      {
+        name: 'SSL disabled',
+        config: { ssl: false }
+      }
+    ];
+    
+    // 当前使用配置2（宽松验证）
+    const selectedConfig = sslConfigs[1];
+    console.log('Using SSL config:', selectedConfig.name);
+    return selectedConfig.config;
+  }
+  
+  return { ssl: { rejectUnauthorized: false } };
+};
+```
+
+**特点**: 
+- 详细的环境和证书状态诊断
+- 4种SSL配置选项可快速切换
+- 当前使用配置2：宽松验证+CA证书
+
 ### Git 提交记录
 ```
 cb6a563 - 使用NEXT_PUBLIC_前缀解决环境变量问题
 c380be5 - 终极修复：使用连接字符串避免环境变量问题
 861c25f - 添加数据库连接调试信息
-[最新] - Vercel PostgreSQL SSL 连接问题彻底修复
+e4ee4a9 - Final SSL fix: connection string parameter modification for Vercel environment
+8e95f60 - Implement secure SSL validation using Supabase CA certificate
+27f8504 - 临时禁用Vercel环境SSL连接以解决证书链问题（已撤销）
+544f7a2 - 添加SSL配置诊断版本
 ```
 
 ---
@@ -272,6 +387,8 @@ c380be5 - 终极修复：使用连接字符串避免环境变量问题
 ## 📋 附录
 
 ### 错误日志样本
+
+#### 初始错误（持续存在）
 ```
 GET 500
 Error: self-signed certificate in certificate chain at /var/task/node_modules/pg-pool/index.js:45:11
@@ -279,12 +396,54 @@ Error: getaddrinfo ENOTFOUND aws-1-us-east-2.pooler.supab at /var/task/node_modu
 Error: password authentication failed for user "postgres" at /var/task/node_modules/pg-pool/index.js:45:11
 ```
 
+#### 最新错误（2025-09-27 10:54:52）
+```
+GET 500
+Error: self-signed certificate in certificate chain at /var/task/node_modules/pg-pool/index.js:45:11
+at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+at async r (/var/task/.next/server/app/[locale]/(free)/page.js:4:783)
+at async a (/var/task/.next/server/app/[locale]/(free)/page.js:4:881)
+at async n (/var/task/.next/server/app/[locale]/(free)/page.js:1:13344)
+{ code: 'SELF_SIGNED_CERT_IN_CHAIN', digest: '2133504283' }
+```
+
+**触发路径**: 首页SSR → WorkerWrapper组件 → getEffectById(1) → effect模型 → getDb() → PostgreSQL SSL连接失败
+
 ### 环境配置参考
+
+#### Vercel 环境变量配置
 ```bash
-# 本地开发 (.env.local)
+# 主要数据库连接
 POSTGRES_URL=postgresql://postgres.thowwlnwywlujiajhxpv:zhang960222..@aws-1-us-east-2.pooler.supabase.com:6543/postgres?sslmode=require
 
-# Vercel 生产环境
+# Supabase CA证书（用于SSL验证）
+SUPABASE_SSL_CERT=-----BEGIN CERTIFICATE-----
+MIIDxDCCAqygAwIBAgIUbLxMod62P2ktCiAkxnKJwtE9VPYwDQYJKoZIhvcNAQEL
+BQAwazELMAkGA1UEBhMCVVMxEDAOBgNVBAgMB0RlbHdhcmUxEzARBgNVBAcMCk5l
+dyBDYXN0bGUxFTATBgNVBAoMDFN1cGFiYXNlIEluYzEeMBwGA1UEAwwVU3VwYWJh
+c2UgUm9vdCAyMDIxIENBMB4XDTIxMDQyODEwNTY1M1oXDTMxMDQyNjEwNTY1M1ow
+azELMAkGA1UEBhMCVVMxEDAOBgNVBAgMB0RlbHdhcmUxEzARBgNVBAcMCk5ldyBD
+YXN0bGUxFTATBgNVBAoMDFN1cGFiYXNlIEluYzEeMBwGA1UEAwwVU3VwYWJh
+c2UgUm9vdCAyMDIxIENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA
+qQXWQyHOB+qR2GJobCq/CBmQ40G0oDmCC3mzVnn8sv4XNeWtE5XcEL0uVih7Jo4D
+kx1QDmGHBH1zDfgs2qXiLb6xpw/CKQPypZW1JssOTMIfQppNQ87K75Ya0p25Y3eP
+S2t2GtvHxNjUV6kjOZjEn2yWEcBdpOVCUYBVFBNMB4YBHkNRDa/+S4uywAoaTWnCJ
+LUicvTlHmMw6xSQQn1UfRQHk50DMCEJ7Cy1RxrZJrkXXRP3LqQL2ijJ6F4yMfh+G
+yb4O4XajoVj/+R4GwywKYrrS8PrSNtwxr5StlQO8zIQUSMiq26wM8mgELFlS/32U
+cltNaQ1xBRizkzpZct9DwIDAQABo2AwXjALBgNVHQ8EBAMCAQYwHQYDVR0OBBYEF
+KjXuXY32CztkhImng4yJNUtaUYsMB8GA1UdIwQYMBaAFKjXuXY32CztkhImng4yJ
+NUtaUYsMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAB8spzNn+
+4VUtVxbdMaX+39Z50sc7uATmus16jmmHjhIHz+l/9GlJ5KqAMOx26mPZgfzG7on
+eL2bVW+WgYUkTT3XEPFWnTp2RJwQao8/tYPXWEJDc0WVQHrpmnWOFKU/d3MqBgBm
+5y+6jB81TU/RG2rVerPDWP+1MMcNNy0491CTL5XQZ7JfDJJ9CCmXSdtTl4uUQnS
+uv/QxCea13BX2ZgJc7Au30vihLhub52De4P/4gonKsNHYdbWjg7OWKwNv/zitGD
+VDB9Y2CMTyZKG3XEu5Ghl1LEnI3QmEKsqaCLv12BnVjbkSeZsMnevJPs1Ye6Tjj
+Jwdik5Po/bKiIz+Fq8=
+-----END CERTIFICATE-----
+```
+
+#### 本地开发 (.env.local)
+```bash
 POSTGRES_URL=postgresql://postgres.thowwlnwywlujiajhxpv:zhang960222..@aws-1-us-east-2.pooler.supabase.com:6543/postgres?sslmode=require
 ```
 
@@ -293,3 +452,15 @@ POSTGRES_URL=postgresql://postgres.thowwlnwywlujiajhxpv:zhang960222..@aws-1-us-e
 **文档状态**: ✅ 已完成  
 **最后更新**: 2025-09-27  
 **下次审查**: 2025-10-27
+
+## 📌 重要规则记录
+
+**执行规则**: 需要在用户确认方案后才能进行执行，不能未经确认就实施修复。
+
+**当前状态**: 等待诊断版本部署结果，根据日志信息选择下一步SSL配置方案。
+
+**可用配置选项**:
+1. 配置1: 严格验证 + CA证书
+2. 配置2: 宽松验证 + CA证书（当前使用）
+3. 配置3: 无证书验证
+4. 配置4: 完全禁用SSL
