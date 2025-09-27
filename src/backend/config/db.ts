@@ -3,16 +3,39 @@ import { Pool } from "pg";
 // Vercel环境优化的数据库连接池
 let globalPool: Pool;
 
-// Vercel环境特定的SSL配置
-const getSSLConfig = () => {
+// 配置Node.js全局SSL设置以解决Vercel环境问题
+if (process.env.VERCEL || process.env.VERCEL_ENV) {
+  // 在Vercel环境中，配置全局SSL选项
+  const https = require('https');
+  const tls = require('tls');
+  
+  // 放宽全局SSL验证
+  if (tls.globalOptions) {
+    tls.globalOptions.rejectUnauthorized = false;
+  }
+  
+  // 配置HTTPS agent
+  const httpsAgent = new https.Agent({
+    rejectUnauthorized: false,
+    checkServerIdentity: () => undefined,
+  });
+  
+  // 设置全局HTTPS agent
+  https.globalAgent = httpsAgent;
+}
+
+// 获取Supabase SSL证书的解决方案
+const getSupabaseSSLOptions = () => {
   // 检查是否在Vercel环境中
   const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
   
   if (isVercel) {
-    // Vercel环境需要特定的SSL配置
+    // Vercel环境的强化SSL配置
     return {
+      // 完全跳过证书验证（Vercel环境的临时解决方案）
       rejectUnauthorized: false,
-      // Vercel可能缺少完整的证书链，所以我们需要放宽验证
+      // 禁用服务器身份验证
+      checkServerIdentity: () => undefined,
     };
   }
   
@@ -35,7 +58,7 @@ export function getDb() {
       
       globalPool = new Pool({
         connectionString,
-        ssl: getSSLConfig(),
+        ssl: getSupabaseSSLOptions(),
         // Vercel serverless优化配置
         max: 1, // 限制连接数以避免连接泄漏
         idleTimeoutMillis: 10000, // 10秒空闲超时
@@ -74,7 +97,7 @@ export function getDb() {
       
       globalPool = new Pool({
         connectionString: fullConnectionString,
-        ssl: getSSLConfig(),
+        ssl: getSupabaseSSLOptions(),
         // Vercel serverless优化配置
         max: 1,
         idleTimeoutMillis: 10000,
