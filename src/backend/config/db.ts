@@ -3,23 +3,67 @@ import { Pool } from "pg";
 // Vercel环境优化的数据库连接池
 let globalPool: Pool;
 
-// 获取SSL配置 - 使用CA证书进行严格验证
+// 获取SSL配置 - 诊断版本
 const getSSLConfig = () => {
   const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
   const caCert = process.env.SUPABASE_SSL_CERT;
   
+  console.log('=== SSL CONFIG DEBUG ===');
+  console.log('Is Vercel:', isVercel);
+  console.log('CA Cert exists:', !!caCert);
+  console.log('CA Cert length:', caCert ? caCert.length : 0);
+  console.log('CA Cert preview:', caCert ? caCert.substring(0, 100) + '...' : 'N/A');
+  
   if (isVercel && caCert) {
-    console.log('Using CA certificate for strict SSL validation in Vercel environment');
-    return {
-      ssl: {
-        ca: caCert,                    // 使用Supabase提供的CA证书
-        rejectUnauthorized: true,      // 严格证书验证
+    // 尝试多种SSL配置
+    const sslConfigs = [
+      // 配置1：严格验证
+      {
+        name: 'Strict validation with CA cert',
+        config: {
+          ssl: {
+            ca: caCert,
+            rejectUnauthorized: true,
+          }
+        }
+      },
+      // 配置2：宽松验证
+      {
+        name: 'Relaxed validation with CA cert',
+        config: {
+          ssl: {
+            ca: caCert,
+            rejectUnauthorized: false,
+          }
+        }
+      },
+      // 配置3：无证书验证
+      {
+        name: 'No SSL validation',
+        config: {
+          ssl: {
+            rejectUnauthorized: false,
+          }
+        }
+      },
+      // 配置4：禁用SSL
+      {
+        name: 'SSL disabled',
+        config: {
+          ssl: false,
+        }
       }
-    };
+    ];
+    
+    // 暂时使用配置2（宽松验证）
+    const selectedConfig = sslConfigs[1];
+    console.log('Using SSL config:', selectedConfig.name);
+    console.log('========================');
+    return selectedConfig.config;
   }
   
-  // 本地环境或备用配置
-  console.log('Using relaxed SSL validation for local environment');
+  console.log('Using default SSL config for local environment');
+  console.log('========================');
   return { ssl: { rejectUnauthorized: false } };
 };
 
