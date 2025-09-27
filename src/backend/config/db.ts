@@ -1,54 +1,113 @@
 import { Pool } from "pg";
 
-// 链接池，所有的连接都维护在这个连接池里面
+// Vercel环境优化的数据库连接池
 let globalPool: Pool;
+
+// Vercel环境特定的SSL配置
+const getSSLConfig = () => {
+  // 检查是否在Vercel环境中
+  const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
+  
+  if (isVercel) {
+    // Vercel环境需要特定的SSL配置
+    return {
+      rejectUnauthorized: false,
+      // Vercel可能缺少完整的证书链，所以我们需要放宽验证
+    };
+  }
+  
+  // 本地开发环境
+  return {
+    rejectUnauthorized: false,
+  };
+};
 
 export function getDb() {
   if (!globalPool) {
-    // 强制使用连接字符串，避免环境变量被截断的问题
-    const connectionString = process.env.POSTGRES_URL || process.env.NEXT_PUBLIC_POSTGRES_URL;
+    // 优先使用连接字符串（最可靠的方式）
+    const connectionString = process.env.POSTGRES_URL;
     
     if (connectionString) {
       console.log('=== DATABASE CONNECTION ===');
-      console.log('Using connection string:', connectionString.replace(/:([^:@]+)@/, ':***@'));
-      console.log('Source:', process.env.POSTGRES_URL ? 'POSTGRES_URL' : 'NEXT_PUBLIC_POSTGRES_URL');
+      console.log('Environment:', process.env.VERCEL_ENV || 'local');
+      console.log('Using connection string');
       console.log('========================');
       
       globalPool = new Pool({
         connectionString,
-        ssl: { rejectUnauthorized: false }
+        ssl: getSSLConfig(),
+        // Vercel serverless优化配置
+        max: 1, // 限制连接数以避免连接泄漏
+        idleTimeoutMillis: 10000, // 10秒空闲超时
+        connectionTimeoutMillis: 5000, // 5秒连接超时
       });
     } else {
-      // 构建连接字符串作为备用方案
-      const sslMode = process.env.NEXT_PUBLIC_POSTGRES_SSLMODE || process.env.POSTGRES_SSLMODE || 'require';
-      const password = process.env.NEXT_PUBLIC_POSTGRES_PASSWORD || process.env.POSTGRES_PASSWORD || 'zhang960222..';
-      let host = process.env.NEXT_PUBLIC_POSTGRES_HOST || process.env.POSTGRES_HOST || 'aws-1-us-east-2.pooler.supabase.com';
-      const port = process.env.NEXT_PUBLIC_POSTGRES_PORT || process.env.POSTGRES_PORT || '6543';
-      const user = process.env.NEXT_PUBLIC_POSTGRES_USER || process.env.POSTGRES_USER || 'postgres.thowwlnwywlujiajhxpv';
-      const database = process.env.NEXT_PUBLIC_POSTGRES_DATABASE || process.env.POSTGRES_DATABASE || 'postgres';
+      // 备用：使用单独的环境变量
+      const sslMode = process.env.POSTGRES_SSLMODE || 'require';
+      const password = process.env.POSTGRES_PASSWORD;
+      const host = process.env.POSTGRES_HOST;
+      const port = process.env.POSTGRES_PORT || '6543';
+      const user = process.env.POSTGRES_USER;
+      const database = process.env.POSTGRES_DATABASE || 'postgres';
       
-      // 修复被截断的主机名
-      if (host === 'aws-1-us-east-2.pooler.supab') {
-        host = 'aws-1-us-east-2.pooler.supabase.com';
-        console.log('Fixed truncated hostname:', host);
+      // 验证必需的环境变量
+      if (!password || !host || !user) {
+        throw new Error(`Missing required database environment variables. Please check:
+          - POSTGRES_PASSWORD: ${password ? '✓' : '✗'}
+          - POSTGRES_HOST: ${host ? '✓' : '✗'}
+          - POSTGRES_USER: ${user ? '✓' : '✗'}`);
       }
       
-      // 构建完整的连接字符串
-      const fullConnectionString = `postgresql://${user}:${password}@${host}:${port}/${database}?sslmode=${sslMode}`;
+      // 修复Vercel环境变量截断问题
+      const fixedHost = host === 'aws-1-us-east-2.pooler.supab' 
+        ? 'aws-1-us-east-2.pooler.supabase.com' 
+        : host;
+      
+      // 构建连接字符串
+      const fullConnectionString = `postgresql://${user}:${password}@${fixedHost}:${port}/${database}?sslmode=${sslMode}`;
       
       console.log('=== DATABASE CONNECTION ===');
-      console.log('Built connection string from env vars');
-      console.log('Host:', host);
-      console.log('User:', user);
-      console.log('Database:', database);
+      console.log('Environment:', process.env.VERCEL_ENV || 'local');
+      console.log('Host:', fixedHost);
+      console.log('SSL Mode:', sslMode);
       console.log('========================');
       
       globalPool = new Pool({
         connectionString: fullConnectionString,
-        ssl: { rejectUnauthorized: false }
+        ssl: getSSLConfig(),
+        // Vercel serverless优化配置
+        max: 1,
+        idleTimeoutMillis: 10000,
+        connectionTimeoutMillis: 5000,
       });
     }
+    
+    // 添加错误处理和连接测试
+    globalPool.on('error', (err) => {
+      console.error('Database pool error:', err);
+      // 在Vercel环境中，销毁连接池以便下次重新创建
+      if (process.env.VERCEL) {
+        globalPool.end().then(() => {
+          globalPool = undefined as any;
+        }).catch(() => {
+          globalPool = undefined as any;
+        });
+      }
+    });
   }
 
   return globalPool;
+}
+
+// 用于测试连接的辅助函数
+export async function testConnection() {
+  try {
+    const db = getDb();
+    const result = await db.query('SELECT NOW()');
+    console.log('Database connection test successful:', result.rows[0]);
+    return true;
+  } catch (error) {
+    console.error('Database connection test failed:', error);
+    return false;
+  }
 }
