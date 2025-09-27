@@ -3,62 +3,49 @@ import { Pool } from "pg";
 // Vercel环境优化的数据库连接池
 let globalPool: Pool;
 
-// 配置Node.js全局SSL设置以解决Vercel环境问题
-if (process.env.VERCEL || process.env.VERCEL_ENV) {
-  // 在Vercel环境中，配置全局SSL选项
-  const https = require('https');
-  const tls = require('tls');
+// 修复连接字符串的SSL参数以解决Vercel证书链问题
+const fixConnectionStringSSL = (connectionString: string) => {
+  if (!connectionString) return connectionString;
   
-  // 放宽全局SSL验证
-  if (tls.globalOptions) {
-    tls.globalOptions.rejectUnauthorized = false;
-  }
-  
-  // 配置HTTPS agent
-  const httpsAgent = new https.Agent({
-    rejectUnauthorized: false,
-    checkServerIdentity: () => undefined,
-  });
-  
-  // 设置全局HTTPS agent
-  https.globalAgent = httpsAgent;
-}
-
-// 获取Supabase SSL证书的解决方案
-const getSupabaseSSLOptions = () => {
-  // 检查是否在Vercel环境中
   const isVercel = process.env.VERCEL || process.env.VERCEL_ENV;
   
   if (isVercel) {
-    // Vercel环境的强化SSL配置
-    return {
-      // 完全跳过证书验证（Vercel环境的临时解决方案）
-      rejectUnauthorized: false,
-      // 禁用服务器身份验证
-      checkServerIdentity: () => undefined,
-    };
+    // 在Vercel环境中，修改SSL参数以跳过证书验证
+    let fixedString = connectionString;
+    
+    // 移除现有的sslmode参数
+    fixedString = fixedString.replace(/[?&]sslmode=[^&]*/g, '');
+    
+    // 移除结尾的?或&如果没有参数
+    fixedString = fixedString.replace(/[?&]$/, '');
+    
+    // 添加不安全的SSL参数（Vercel环境需要）
+    const separator = fixedString.includes('?') ? '&' : '?';
+    fixedString += `${separator}sslmode=require&sslrootcert=ignore&sslrejectUnauthorized=0`;
+    
+    console.log('Fixed SSL connection string for Vercel environment');
+    return fixedString;
   }
   
-  // 本地开发环境
-  return {
-    rejectUnauthorized: false,
-  };
+  return connectionString;
 };
 
 export function getDb() {
   if (!globalPool) {
     // 优先使用连接字符串（最可靠的方式）
-    const connectionString = process.env.POSTGRES_URL;
+    const rawConnectionString = process.env.POSTGRES_URL;
     
-    if (connectionString) {
+    if (rawConnectionString) {
+      // 修复SSL连接字符串
+      const connectionString = fixConnectionStringSSL(rawConnectionString);
+      
       console.log('=== DATABASE CONNECTION ===');
       console.log('Environment:', process.env.VERCEL_ENV || 'local');
-      console.log('Using connection string');
+      console.log('Using connection string with SSL fix');
       console.log('========================');
       
       globalPool = new Pool({
         connectionString,
-        ssl: getSupabaseSSLOptions(),
         // Vercel serverless优化配置
         max: 1, // 限制连接数以避免连接泄漏
         idleTimeoutMillis: 10000, // 10秒空闲超时
@@ -87,7 +74,10 @@ export function getDb() {
         : host;
       
       // 构建连接字符串
-      const fullConnectionString = `postgresql://${user}:${password}@${fixedHost}:${port}/${database}?sslmode=${sslMode}`;
+      const rawConnectionString = `postgresql://${user}:${password}@${fixedHost}:${port}/${database}?sslmode=${sslMode}`;
+      
+      // 修复SSL连接字符串
+      const connectionString = fixConnectionStringSSL(rawConnectionString);
       
       console.log('=== DATABASE CONNECTION ===');
       console.log('Environment:', process.env.VERCEL_ENV || 'local');
@@ -96,8 +86,7 @@ export function getDb() {
       console.log('========================');
       
       globalPool = new Pool({
-        connectionString: fullConnectionString,
-        ssl: getSupabaseSSLOptions(),
+        connectionString,
         // Vercel serverless优化配置
         max: 1,
         idleTimeoutMillis: 10000,
