@@ -55,8 +55,8 @@ const getSSLConfig = () => {
       }
     ];
     
-    // 切换到配置4（完全禁用SSL）以解决证书链问题
-    const selectedConfig = sslConfigs[3];
+    // 使用配置1（严格验证+完整证书链）
+    const selectedConfig = sslConfigs[0];
     console.log('Using SSL config:', selectedConfig.name);
     console.log('========================');
     return selectedConfig.config;
