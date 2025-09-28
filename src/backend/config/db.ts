@@ -55,8 +55,8 @@ const getSSLConfig = () => {
       }
     ];
     
-    // 暂时使用配置2（宽松验证）
-    const selectedConfig = sslConfigs[1];
+    // 切换到配置4（完全禁用SSL）以解决证书链问题
+    const selectedConfig = sslConfigs[3];
     console.log('Using SSL config:', selectedConfig.name);
     console.log('========================');
     return selectedConfig.config;
