@@ -382,10 +382,24 @@ hkjOPQQDAwNnADBkAjB20HQp6YL7CqYD82KaLGzgw305aUKw2aMrdkBR29J183jY
 -----END CERTIFICATE-----
 ```
 
-**状态**: 部署中，等待验证结果
+**状态**: 已发现问题并修复中
+
+### 最新问题：TypeScript编译错误（2025-09-29）
+**错误信息**: `Cannot find name 'db'` in effect_result.ts:55
+**原因**: 在effect_result.ts文件的update函数中，遗漏了将db.query改为pool.query
+**解决方案**: 
+```typescript
+// 修复前
+const res = await db.query(...)
+
+// 修复后  
+const res = await pool.query(...)
+```
 
 ### Git 提交记录
 ```
+cfb73ca - 修复effect_result.ts中缺失的pool引用
+5a34528 - 完成PostgreSQL SSL修复：实现单例数据库连接池
 cb6a563 - 使用NEXT_PUBLIC_前缀解决环境变量问题
 c380be5 - 终极修复：使用连接字符串避免环境变量问题
 861c25f - 添加数据库连接调试信息
@@ -511,7 +525,14 @@ POSTGRES_URL=postgresql://postgres.thowwlnwywlujiajhxpv:zhang960222..@aws-1-us-e
 
 **执行规则**: 需要在用户确认方案后才能进行执行，不能未经确认就实施修复。
 
-**当前状态**: 已部署Amazon RDS完整证书链方案，等待验证结果。
+**当前状态**: 已修复TypeScript编译错误，重新部署中。
+
+**单例连接池实施完成**:
+- ✅ 创建新的单例连接池 `src/db/pool.ts`
+- ✅ 更新所有7个模型文件使用新的pool连接
+- ✅ 修复effect_result.ts中遗漏的db.query引用
+- ✅ 添加数据库诊断端点 `/api/db-diag`
+- ✅ 实现next-intl中间件防止语言相关错误
 
 **配置方案演进**:
 1. 配置1: 严格验证 + CA证书 ✅（当前使用）
@@ -523,4 +544,5 @@ POSTGRES_URL=postgresql://postgres.thowwlnwywlujiajhxpv:zhang960222..@aws-1-us-e
 - 代码中只有一个全局连接池，排除了多Pool实例问题
 - Supabase Pooler (:6543) 强制TLS连接
 - 需要完整证书链而非单个CA证书
-- 连接字符串中的sslmode参数对node-postgres无效
+- 连接字符串中的sslmode参数对node-postges无效
+- 所有数据库引用必须使用统一的pool实例，避免混用变量名

@@ -1,12 +1,13 @@
-import createMiddleware from "next-intl/middleware";
+import createMiddleware from 'next-intl/middleware';
 
 export default createMiddleware({
-  locales: ["en", "zh"],           // ← 按你的实际语言填
-  defaultLocale: "en",
-  localePrefix: "as-needed"        // 路径可不带前缀时自动重写
+  locales: ['en', 'zh'],        // ← 你的语言列表
+  defaultLocale: 'en',          // ← 默认语言
+  localePrefix: 'as-needed'
 });
 
-// 让所有"页面请求"都走中间件；排除 api/_next/静态文件
+// 只让"页面请求"走中间件；排除 api、_next、静态文件、_vercel
 export const config = {
-  matcher: ["/((?!api|_next|.*\\..*).*)"],
+  matcher: ['/', '/(en|zh)/:path*']
+  // 若你的目录是 zh-CN/en-US，写成 '/(zh-CN|en-US)/:path*'
 };
