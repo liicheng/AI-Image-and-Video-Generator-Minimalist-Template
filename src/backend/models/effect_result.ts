@@ -52,13 +52,13 @@ export async function update(
   r2Url: string
 ) {
   if (r2Url !== "") {
-    const res = await db.query(
+    const res = await pool.query(
       `UPDATE effect_result SET status = $1, running_time = $2, updated_at = $3, url = $4 WHERE original_id = $5`,
       [status, runningTime, updatedAt, r2Url, originalId]
     );
     return res.rows[0];
   } else {
-    const res = await db.query(
+    const res = await pool.query(
       `UPDATE effect_result SET status = $1, running_time = $2, updated_at = $3 WHERE original_id = $4`,
       [status, runningTime, updatedAt, originalId]
     );
