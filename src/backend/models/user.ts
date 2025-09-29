@@ -1,10 +1,9 @@
-import { getDb } from "../config/db";
+import { pool } from "@/db/pool";
 import { User } from "../type/type";
 import { QueryResultRow } from "pg";
 
 export async function insertUser(user: User) {
-  const db = await getDb();
-  const res = await db.query(
+  const res = await pool.query(
     `INSERT INTO users 
           (uuid, email, created_at, nickname, avatar_url, locale, signin_type, signin_ip, signin_provider, signin_openid, update_time) 
           VALUES 
@@ -28,8 +27,7 @@ export async function insertUser(user: User) {
 }
 
 export async function getByEmail(email: string): Promise<User | undefined> {
-  const db = getDb();
-  const res = await db.query(`SELECT * FROM users WHERE email = $1 LIMIT 1`, [
+  const res = await pool.query(`SELECT * FROM users WHERE email = $1 LIMIT 1`, [
     email,
   ]);
   if (res.rowCount === 0) {
@@ -42,8 +40,7 @@ export async function getByEmail(email: string): Promise<User | undefined> {
 }
 
 export async function getByUuidAndEmail(uuid: string, email: string) {
-  const db = getDb();
-  const res = await db.query(
+  const res = await pool.query(
     `SELECT * FROM users WHERE uuid = $1 AND email = $2 LIMIT 1`,
     [uuid, email]
   );
