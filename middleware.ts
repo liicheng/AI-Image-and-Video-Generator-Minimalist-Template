@@ -8,6 +8,7 @@ export default createMiddleware({
 
 // 只让"页面请求"走中间件；排除 api、_next、静态文件、_vercel
 export const config = {
-  matcher: ['/', '/(en|zh)/:path*']
-  // 若你的目录是 zh-CN/en-US，写成 '/(zh-CN|en-US)/:path*'
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)'
+  ],
 };
