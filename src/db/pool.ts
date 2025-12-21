@@ -188,6 +188,31 @@ function attachListeners(pool: Pool, mode: SslMode) {
   });
 }
 
+function wrapQuery(pool: Pool, mode: SslMode) {
+  const originalQuery = pool.query.bind(pool);
+
+  pool.query = (async (...args: Parameters<typeof originalQuery>) => {
+    try {
+      return await originalQuery(...args);
+    } catch (error: any) {
+      if (mode === "strict" && error?.code === "SELF_SIGNED_CERT_IN_CHAIN") {
+        console.error(
+          "[POOL] ⚠️ query() 捕获证书链错误，切换至宽松模式后重试"
+        );
+        currentMode = "relaxed";
+        await teardownPool(pool);
+        global.__pgPool__ = initializePool(currentMode, /*fromFallback*/ true);
+        const nextPool = global.__pgPool__;
+        if (!nextPool) {
+          throw error;
+        }
+        return nextPool.query(...args);
+      }
+      throw error;
+    }
+  }) as Pool["query"];
+}
+
 function initializePool(mode: SslMode, fromFallback = false) {
   console.log(
     fromFallback
@@ -198,6 +223,7 @@ function initializePool(mode: SslMode, fromFallback = false) {
   const poolConfig = buildPoolConfig(mode);
   const pool = new Pool(poolConfig);
   attachListeners(pool, mode);
+  wrapQuery(pool, mode);
   console.log("[POOL] ✅ Pool实例创建完成 (mode:", mode, ")");
   return pool;
 }
